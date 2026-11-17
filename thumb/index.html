@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Thumbnail Maker</title>
+<link rel="icon" href="../logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#efe8d8;--card:#f7f2e6;--ink:#1d1b17;--red:#b8321f;--shade:#ddd4c0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:"IBM Plex Mono",monospace;min-height:100vh}
+  main{max-width:760px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-family:Oswald;font-weight:700;text-transform:uppercase;font-size:32px;line-height:1.1}
+  .sub{margin:6px 0 20px;font-size:14px;line-height:1.5}
+  .drop{display:block;border:3px dashed var(--ink);background:var(--card);padding:28px 16px;text-align:center;cursor:pointer;
+    font-family:Oswald;text-transform:uppercase;letter-spacing:.08em;font-size:20px}
+  .drop small{display:block;font-family:"IBM Plex Mono";text-transform:none;letter-spacing:0;font-size:13px;margin-top:6px}
+  .drop.over{background:#fff;border-color:var(--red)}
+  .drop input{display:none}
+  .out[hidden]{display:none}
+  .out{margin-top:22px}
+  canvas{width:100%;height:auto;display:block;border:3px solid var(--ink);background:#111}
+  .row{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:14px 0}
+  label.ctl{display:flex;align-items:center;gap:10px;font-size:14px;flex:1;min-width:220px}
+  label.ctl input{flex:1}
+  .btn{display:block;width:100%;padding:16px;background:var(--red);color:#fff;border:2px solid var(--ink);font-family:Oswald;
+    font-size:20px;text-transform:uppercase;letter-spacing:.1em;cursor:pointer;border-radius:0;box-shadow:5px 5px 0 var(--ink)}
+  .btn:hover{background:#9c2817}
+  .note{font-size:12px;margin-top:14px;opacity:.75;line-height:1.5}
+</style>
+</head>
+<body>
+<main>
+  <h1>Thumbnail Maker</h1>
+  <p class="sub">Drop in a vertical cover. Get a 1280×720 YouTube thumbnail with the whole cover in the middle and a blurred copy filling the sides.</p>
+
+  <label class="drop" id="drop">Tap to choose a cover
+    <small>or drag an image here</small>
+    <input type="file" id="file" accept="image/*">
+  </label>
+
+  <section class="out" id="out" hidden>
+    <canvas id="cv" width="1280" height="720"></canvas>
+    <div class="row">
+      <label class="ctl">Cover size <input type="range" id="zoom" min="100" max="200" value="100"></label>
+      <label class="ctl">Background dim <input type="range" id="dim" min="0" max="70" value="25"></label>
+    </div>
+    <button class="btn" id="dl">Download thumbnail</button>
+    <p class="note">Everything happens on your device. Nothing is uploaded. "Cover size" above 100% zooms the cover in (it trims the top and bottom).</p>
+  </section>
+</main>
+<script>
+const W = 1280, H = 720;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const fileIn = document.getElementById('file'), drop = document.getElementById('drop');
+const zoom = document.getElementById('zoom'), dim = document.getElementById('dim');
+let img = null, name = 'thumbnail';
+
+function render() {
+  if (!img) return;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  // Background: image scaled to fill the whole frame, then blurred by shrinking and re-growing
+  const fill = Math.max(W / iw, H / ih);
+  const small = document.createElement('canvas');
+  small.width = 64; small.height = 36;
+  const s = small.getContext('2d');
+  s.imageSmoothingQuality = 'high';
+  s.drawImage(img, (W - iw * fill) / 2 / 20, (H - ih * fill) / 2 / 20, iw * fill / 20, ih * fill / 20);
+  const mid = document.createElement('canvas');
+  mid.width = 256; mid.height = 144;
+  const m = mid.getContext('2d');
+  m.imageSmoothingQuality = 'high';
+  m.drawImage(small, 0, 0, 256, 144);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(mid, -20, -12, W + 40, H + 24);
+  ctx.fillStyle = 'rgba(0,0,0,' + (dim.value / 100) + ')';
+  ctx.fillRect(0, 0, W, H);
+  // Foreground: whole cover fit to the height, centered
+  const fit = Math.min(W / iw, H / ih) * (zoom.value / 100);
+  const dw = iw * fit, dh = ih * fit;
+  const dx = (W - dw) / 2, dy = (H - dh) / 2;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
+}
+
+function load(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  name = file.name.replace(/\.[^.]+$/, '') || 'thumbnail';
+  const url = URL.createObjectURL(file);
+  const i = new Image();
+  i.onload = () => { img = i; document.getElementById('out').hidden = false; render(); };
+  i.src = url;
+}
+
+fileIn.addEventListener('change', e => load(e.target.files[0]));
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => load(e.dataTransfer.files[0]));
+document.addEventListener('paste', e => { const f = [...e.clipboardData.files][0]; if (f) load(f); });
+zoom.addEventListener('input', render);
+dim.addEventListener('input', render);
+
+document.getElementById('dl').addEventListener('click', () => {
+  cv.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '-youtube.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, 'image/jpeg', 0.92);
+});
+</script>
+</body>
+</html>
